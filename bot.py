@@ -1,9 +1,9 @@
-@dp.callback_query(lambda c: c.data == 'checkout')
-async def checkout(callback: types.CallbackQuery):
-    await callback.message.answer('Введите ваше имя:')
+awa it callback.message.answer('Введите ваше имя:')
     await dp.storage.set_data(callback.from_user.id, {'step': 'name'})
 
-@dp.message()
+@dp.message()@dp.callback_query(lambda c: c.data == 'checkout')
+async def checkout(callback: types.CallbackQuery):
+
 async def handle_checkout(message: types.Message):
     data = await dp.storage.get_data(message.from_user.id)
     if not data or 'step' not in data:
@@ -13,86 +13,3 @@ async def handle_checkout(message: types.Message):
     cursor = conn.cursor()
 
     if data['step'] == 'name':
-        await dp.storage.set_data(message.from_user.id, {'step': 'phone', 'name': message.text})
-        await message.answer('Введите ваш номер телефона:')
-
-    elif data['step'] == 'phone':
-        await dp.storage.set_data(message.from_user.id, {'step': 'address', 'name': data['name'], 'phone': message.text})
-        await message.answer('Введите адрес доставки:')
-
-    elif data['step'] == 'address':
-        name = data['name']
-        phone = data['phone']
-        address = message.text
-
-        cursor.execute('''
-            SELECT products.name, products.price, cart.quantity
-            FROM cart JOIN products ON cart.product_id = products.id
-            WHERE cart.user_id=?
-        ''', (message.from_user.id,))
-        items = cursor.fetchall()
-
-        items_text = ''
-        total = 0
-        for pname, price, qty in items:
-            subtotal = price * qty
-            items_text += f'{pname} x{qty} — {subtotal} сум\n'
-            total += subtotal
-
-        cursor.execute('INSERT INTO orders (user_id, name, phone, address, items, total) VALUES (?, ?, ?, ?, ?, ?)',
-                       (message.from_user.id, name, phone, address, items_text, total))
-        cursor.execute('DELETE FROM cart WHERE user_id=?', (message.from_user.id,))
-        conn.commit()
-        conn.close()
-
-        await dp.storage.set_data(message.from_user.id, {})
-        await message.answer(f'Спасибо за заказ!\n\n{name}\nТел: {phone}\nАдрес: {address}\n\n{items_text}Итого: {total} сум')
-
-        admin_id = await get_admin_id()
-        await bot.send_message(admin_id, f'Новый заказ!\n\n{name}\nТел: {phone}\nАдрес: {address}\n\n{items_text}Итого: {total} сум')
-
-@dp.message(lambda message: message.text == '📦 Мои заказы')
-async def my_orders(message: types.Message):
-    conn = sqlite3.connect('shop.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT id, items, total FROM orders WHERE user_id=?', (message.from_user.id,))
-    orders = cursor.fetchall()
-    conn.close()
-
-    if not orders:
-        await message.answer('У вас нет заказов.')
-        return
-
-    text = ''
-    for oid, items, total in orders:
-        text += f'Заказ №{oid}\n{items}Итого: {total} сум\n\n'
-    await message.answer(text)
-
-@dp.message(Command('add_product'))
-async def add_product(message: types.Message):
-    admin_id = await get_admin_id()
-    if message.from_user.id != admin_id:
-        await message.answer('Нет доступа.')
-        return
-    await message.answer('Отправь данные товара в формате:\nНазвание;Описание;Цена;Ссылка_на_фото')
-
-@dp.message(lambda message: ';' in message.text)
-async def save_product(message: types.Message):
-    admin_id = await get_admin_id()
-    if message.from_user.id != admin_id:
-        return
-    try:
-        name, desc, price, photo = message.text.split(';')
-        conn = sqlite3.connect('shop.db')
-        cursor = conn.cursor()
-        cursor.execute('INSERT INTO products (name, description, price, photo) VALUES (?, ?, ?, ?)',
-                       (name.strip(), desc.strip(), int(price.strip()), photo.strip()))
-        conn.commit()
-        conn.close()
-        await message.answer('Товар добавлен!')
-    except Exception as e:
-        await message.answer(f'Ошибка: {e}')
-
-if name == 'main':
-    init_db()
-    asyncio.run(dp.start_polling(bot))
